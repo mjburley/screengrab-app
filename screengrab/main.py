@@ -1,17 +1,32 @@
 """ScreenGrab entry point — wires tray, hotkey listener, and capture flow."""
 from __future__ import annotations
 
+import ctypes
 import sys
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QGuiApplication, QPixmap
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
-from .capture import grab_virtual_screen
-from .editor import EditorWindow
-from .hotkey import HotkeyListener
-from .selector import SelectorOverlay
-from .tray import Tray
+# Tell Windows we are per-monitor DPI aware *before* QApplication is created.
+# Without this, PyInstaller-built .exes default to system-DPI awareness and Qt
+# sees the wrong DPI on high-resolution monitors (4K/scaled displays look broken).
+if sys.platform == "win32":
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except (AttributeError, OSError):
+        pass  # Older Windows versions or already set — best effort.
+
+# Honour fractional scaling factors (e.g. 150%) without rounding artefacts.
+QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+    Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+)
+
+from .capture import grab_virtual_screen  # noqa: E402 — must follow DPI setup
+from .editor import EditorWindow  # noqa: E402
+from .hotkey import HotkeyListener  # noqa: E402
+from .selector import SelectorOverlay  # noqa: E402
+from .tray import Tray  # noqa: E402
 
 
 class ScreenGrabApp:
@@ -57,8 +72,8 @@ class ScreenGrabApp:
             return
         self._busy = True
         try:
-            pixmap, rect = grab_virtual_screen()
-            self._overlay = SelectorOverlay(pixmap, rect)
+            pixmap, rect, dpr = grab_virtual_screen()
+            self._overlay = SelectorOverlay(pixmap, rect, dpr)
             self._overlay.region_selected.connect(self._on_region_selected)
             self._overlay.cancelled.connect(self._on_cancelled)
             self._overlay.destroyed.connect(self._on_overlay_destroyed)

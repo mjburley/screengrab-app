@@ -28,7 +28,12 @@ class SelectorOverlay(QWidget):
     region_selected = Signal(QRect, QPixmap)
     cancelled = Signal()
 
-    def __init__(self, desktop_pixmap: QPixmap, desktop_rect: QRect) -> None:
+    def __init__(
+        self,
+        desktop_pixmap: QPixmap,
+        desktop_rect: QRect,
+        dpr: float = 1.0,
+    ) -> None:
         super().__init__(
             None,
             Qt.WindowType.FramelessWindowHint
@@ -43,10 +48,20 @@ class SelectorOverlay(QWidget):
 
         self._pixmap = desktop_pixmap
         self._desktop_rect = desktop_rect
+        self._dpr = dpr if dpr > 0 else 1.0
         self.setGeometry(desktop_rect)
 
         self._origin: QPoint | None = None
         self._current: QPoint | None = None
+
+    def _logical_to_physical(self, r: QRect) -> QRect:
+        """Convert a rect from device-independent units to the underlying pixmap's
+        physical-pixel coordinate space (used by ``QPixmap.copy`` and as the
+        source rect of ``QPainter.drawPixmap``)."""
+        d = self._dpr
+        return QRect(
+            int(r.x() * d), int(r.y() * d), int(r.width() * d), int(r.height() * d)
+        )
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt API
         super().showEvent(event)
@@ -77,8 +92,9 @@ class SelectorOverlay(QWidget):
 
         sel = self._selection_rect()
         if not sel.isNull() and sel.width() > 0 and sel.height() > 0:
-            # Re-draw the selected region at full brightness
-            p.drawPixmap(sel, self._pixmap, sel)
+            # Re-draw the selected region at full brightness. The source rect
+            # for drawPixmap is in physical pixels regardless of devicePixelRatio.
+            p.drawPixmap(sel, self._pixmap, self._logical_to_physical(sel))
 
             # Border
             pen = QPen(QColor(255, 255, 255), 1)
@@ -127,7 +143,11 @@ class SelectorOverlay(QWidget):
             self._cancel()
             return
         sel = sel.intersected(self.rect())
-        cropped = self._pixmap.copy(sel)
+        # Crop in physical pixels so the editor receives the full-resolution image.
+        cropped = self._pixmap.copy(self._logical_to_physical(sel))
+        # Strip DPR — the editor treats the cropped pixmap as its own coordinate
+        # space (1 pixel = 1 unit), which keeps annotation maths simple.
+        cropped.setDevicePixelRatio(1.0)
         self.region_selected.emit(sel, cropped)
         self.close()
 

@@ -155,6 +155,21 @@ Fix: copy the .exe to `%LOCALAPPDATA%\ScreenGrab\` (a path Windows considers sta
 
 **Lesson**: registry Run entries pin a path; treat the .exe location like an installed binary, not a build artifact. `%LOCALAPPDATA%` is the right home for unprivileged installs.
 
+### 8. High-DPI / 4K monitors looked broken
+
+On a 4K display with Windows scaling (150% or 200%), the overlay went weird — the captured desktop appeared at the wrong scale and the whole screen looked like it had switched resolution. Two stacked problems:
+
+1. **PyInstaller .exes default to system-DPI awareness**, so when launched on a per-monitor-DPI-aware Windows, Qt was being lied to about the screen scale.
+2. **mss captures at physical pixels**, but Qt sizes windows in device-independent (logical) units. Setting `setGeometry(physical_rect)` made the overlay too large; drawing the physical-sized pixmap into a logical-sized widget produced visual nonsense.
+
+Fix:
+- At process start (before `QApplication`): `ctypes.windll.shcore.SetProcessDpiAwareness(2)` for per-monitor V2, plus `setHighDpiScaleFactorRoundingPolicy(PassThrough)` to handle fractional 150%-style scaling.
+- `capture.grab_virtual_screen()` now returns `(pixmap, logical_rect, dpr)` — the pixmap is tagged with `setDevicePixelRatio(dpr)`, the rect uses Qt's `virtualGeometry()` (device-independent units).
+- `SelectorOverlay` accepts `dpr` and converts logical mouse coordinates to physical pixels before calling `QPixmap.copy()` / passing `source` to `drawPixmap()` (Qt expects physical pixel units in those source rects, regardless of DPR).
+- The cropped pixmap handed to the editor has DPR stripped to 1.0, so the editor and export pipeline keep their simple "1 pixel = 1 unit" maths.
+
+**Lesson**: high-DPI in Qt is two separate problems — telling Windows you're DPI-aware (an OS-level flag baked into the manifest, or set at runtime via `SetProcessDpiAwareness`), and then juggling the difference between device-independent units (most Qt APIs) and physical pixels (`QPixmap.copy`, `drawPixmap` source rects). Get either wrong and the whole UI looks broken.
+
 ---
 
 ## File-by-file responsibilities
