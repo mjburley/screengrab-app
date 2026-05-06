@@ -178,6 +178,7 @@ class EditorWindow(QMainWindow):
     # ---- layout ----
     def _build_toolbar(self) -> None:
         tb = QToolBar()
+        self.toolbar = tb
         tb.setMovable(False)
         tb.setIconSize(QSize(SWATCH_SIZE, SWATCH_SIZE))
         tb.setStyleSheet(
@@ -248,7 +249,10 @@ class EditorWindow(QMainWindow):
         screen = QGuiApplication.primaryScreen().availableGeometry()
         max_w = int(screen.width() * 0.9)
         max_h = int(screen.height() * 0.9) - TOOLBAR_HEIGHT
-        target_w = min(size.width(), max_w) + 40
+        # Toolbar dictates the floor — without this, narrow screenshots clip Copy/Save.
+        min_w = self.toolbar.sizeHint().width() + 16
+        self.setMinimumWidth(min_w)
+        target_w = max(min(size.width(), max_w) + 40, min_w)
         target_h = min(size.height(), max_h) + TOOLBAR_HEIGHT + 40
         self.resize(target_w, target_h)
         # Centre on the primary screen
