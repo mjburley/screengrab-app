@@ -73,21 +73,25 @@ There are three ways to start a capture:
 
 Then **drag** to draw a rectangle over the area you want. Release to open the editor. Press **Esc** to cancel.
 
+**Several screenshots in a row:** you don't need to close the editor first. Press **PrintScreen** again at any time. Any open editors hide while you select, so they aren't in the new screenshot, then come back. Each capture opens in its own editor, slightly offset from the last.
+
 > **PrintScreen does nothing?** Windows 11 hijacks the key for the built-in Snipping Tool. To free it for ScreenGrab:
 > **Settings → Accessibility → Keyboard → Use the Print screen key to open Snipping Tool → Off**.
 > (Quick path: paste `ms-settings:easeofaccess-keyboard` into the Run dialog.)
 
 ### Annotating
 
-The editor toolbar has 5 tool buttons and a 6-colour palette:
+The editor toolbar has the drawing tools, a text-size picker, a 6-colour palette and the output buttons:
 
 ```
-[▭ Rectangle] [→ Arrow] [T Text]  ⬤⬤⬤⬤⬤⬤  [Copy] [Save]
+[▭ Rectangle] [→ Arrow] [T Text] [14▾]  ⬤⬤⬤⬤⬤⬤  [Extract Text] [Copy] [Save]
 ```
 
 - **Rectangle / Arrow**: click the tool, then drag on the canvas. After release the item is selected and fully drag-droppable. Rectangles get 8 resize handles; arrows get 2 endpoint handles.
 - **Text**: click the tool, then click anywhere on the canvas to drop a text box. Type your text, click off to finish. Double-click an existing text box to edit it again.
+- **Text size**: pick a size (12–72) from the box next to **Text**. New text uses that size, and any selected text box resizes to match. The last size you chose is remembered for the next capture until you quit ScreenGrab.
 - **Colour**: click a swatch to set the active colour. If an item is selected, it recolours to match. Default is red.
+- **Extract Text**: click **Extract Text**, then drag over the part of the screenshot whose text you want. That text is copied to the clipboard, one line per line. Click once instead of dragging to take all the text, or press **Ctrl+Shift+C** to copy all of it straight away. It uses the OCR engine built into Windows, so it works offline. It reads the original screenshot, not your annotations. Accuracy is good for normal screen text, but the **£** sign is often misread.
 - **Copy**: copies the annotated image to the clipboard. Paste anywhere with **Ctrl+V**.
 - **Save**: writes a PNG to your Downloads folder named `screenshot-YYYYMMDD-HHMMSS.png`. No save dialog — it just saves and confirms in the status bar.
 
@@ -99,6 +103,7 @@ The editor toolbar has 5 tool buttons and a 6-colour palette:
 | **Delete** / **Backspace** | Remove the selected annotation |
 | **Ctrl+C** | Copy to clipboard |
 | **Ctrl+S** | Save to Downloads |
+| **Ctrl+Shift+C** | Extract all text to clipboard |
 
 ---
 
@@ -137,6 +142,7 @@ That's everything — no other files or registry entries are created.
 | **"Couldn't enable autostart"** balloon | The `.exe` is in a path the registry can't reach. Move it to `%LOCALAPPDATA%\ScreenGrab\` and try again. |
 | **Editor opens off-screen on multi-monitor** | The editor centres on the primary screen — drag it onto the screen you want. |
 | **`.exe` startup is slow (~3 seconds)** | Normal. PyInstaller `--onefile` extracts to a temp dir on every launch. The `--onedir` build mode is faster but produces a folder rather than a single file. |
+| **Extract Text says "No Windows OCR language is installed"** | Add a language under Settings → Time & language → Language & region. Windows installs its OCR model with the language. |
 | **Antivirus flags `ScreenGrab.exe`** | False positive — common for unsigned PyInstaller bundles. Add an exception, or build it yourself from source. |
 
 ---

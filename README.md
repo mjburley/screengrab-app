@@ -6,8 +6,10 @@ A minimal Windows screenshot tool. Lives in the system tray; press **PrintScreen
 
 - Global **PrintScreen** hotkey
 - Drag-to-select any region across one or multiple monitors
-- 5 toolbar buttons: **Rectangle**, **Arrow**, **Text**, **Copy**, **Save**
+- Toolbar: **Rectangle**, **Arrow**, **Text** (with a size picker), **Extract Text**, **Copy**, **Save**
 - All annotations are drag-droppable and resizable
+- **Extract Text**: drag over part of the screenshot, or click once for all of it, to copy its text to the clipboard. It uses the OCR engine built into Windows and works offline.
+- Take several screenshots in a row: press PrintScreen again while editors are open. They hide while you select, then come back, and each capture gets its own editor.
 - Color palette: Red (default), Black, White, Yellow, Green, Blue
 - Save to `%USERPROFILE%\Downloads\screenshot-YYYYMMDD-HHMMSS.png`
 
@@ -38,3 +40,4 @@ The executable is written to `dist\ScreenGrab.exe`.
 | **Delete** | Remove selected annotation |
 | **Ctrl+C** | Copy to clipboard |
 | **Ctrl+S** | Save to Downloads |
+| **Ctrl+Shift+C** | Extract all text to clipboard |

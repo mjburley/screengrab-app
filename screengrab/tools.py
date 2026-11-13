@@ -11,6 +11,7 @@ class ToolMode(Enum):
     RECT = auto()
     ARROW = auto()
     TEXT = auto()
+    OCR = auto()  # drag a region to extract its text (not an annotation)
 
 
 # Order matters — first entry is the default active colour.
@@ -22,3 +23,7 @@ PALETTE: list[tuple[str, QColor]] = [
     ("Green", QColor(34, 197, 94)),
     ("Blue", QColor(37, 99, 235)),
 ]
+
+# Point sizes offered for text annotations.
+TEXT_SIZES: list[int] = [12, 14, 18, 24, 32, 48, 72]
+DEFAULT_TEXT_SIZE = 14

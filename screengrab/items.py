@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .tools import DEFAULT_TEXT_SIZE
+
 HANDLE_SIZE = 8.0
 STROKE_WIDTH = 3
 
@@ -328,17 +330,24 @@ class TextItem(QGraphicsTextItem):
 
     DEFAULT_TEXT = "Text"
 
-    def __init__(self, color: QColor, text: str = "") -> None:
+    def __init__(
+        self, color: QColor, text: str = "", size: int = DEFAULT_TEXT_SIZE
+    ) -> None:
         super().__init__(text or self.DEFAULT_TEXT)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
-        self.setFont(QFont("Segoe UI", 14))
+        self.setFont(QFont("Segoe UI", size))
         self.set_color(color)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
     def set_color(self, color: QColor) -> None:
         self.setDefaultTextColor(color)
+
+    def set_font_size(self, size: int) -> None:
+        font = self.font()
+        font.setPointSize(size)
+        self.setFont(font)
 
     def color(self) -> QColor:
         return self.defaultTextColor()
