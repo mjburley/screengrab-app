@@ -38,6 +38,37 @@ SWATCH_SIZE = 22
 OCR_HINT = "Drag over the text you want to copy, or click once for the whole screenshot"
 OCR_BAND_COLOR = QColor(37, 99, 235)
 
+# The toolbar is drawn by a stylesheet, which overrides the native palette, so
+# every colour — text included — must be set for both Windows colour schemes.
+# Leaving text to the palette gave white-on-white buttons in dark mode.
+THEMES: dict[str, dict[str, str]] = {
+    "light": {
+        "bar": "#f5f5f5", "bar_border": "#ddd", "btn": "white", "btn_border": "#ccc",
+        "text": "#1a1a1a", "hover": "#eee", "checked": "#e6f0ff", "accent": "#3b82f6",
+        "swatch_ring": "#000000",
+    },
+    "dark": {
+        "bar": "#2b2b2b", "bar_border": "#3d3d3d", "btn": "#3a3a3a", "btn_border": "#555",
+        "text": "#f2f2f2", "hover": "#474747", "checked": "#1e3a5f", "accent": "#3b82f6",
+        "swatch_ring": "#ffffff",
+    },
+}
+TOOLBAR_QSS = (
+    "QToolBar {{ background:{bar}; border-bottom:1px solid {bar_border}; padding:4px; spacing:6px; }}"
+    "QPushButton {{ padding:6px 12px; border:1px solid {btn_border}; border-radius:4px;"
+    "  background:{btn}; color:{text}; }}"
+    "QPushButton:checked {{ background:{checked}; border-color:{accent}; }}"
+    "QPushButton:hover {{ background:{hover}; }}"
+    # No QComboBox rule: the native combo follows the palette, which matches
+    # the scheme chosen here. Partly styling it leaves a stray native border
+    # around its drop-down arrow.
+)
+
+
+def _current_theme() -> dict[str, str]:
+    dark = QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+    return THEMES["dark" if dark else "light"]
+
 
 class EditorScene(QGraphicsScene):
     """Scene that owns the screenshot pixmap and forwards drawing-tool clicks."""
@@ -174,19 +205,15 @@ class EditorView(QGraphicsView):
         super().mouseReleaseEvent(event)
 
 
-def _swatch_icon(color: QColor, selected: bool) -> QIcon:
+def _swatch_icon(color: QColor, selected: bool, ring: QColor) -> QIcon:
     pm = QPixmap(SWATCH_SIZE, SWATCH_SIZE)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.setBrush(color)
     if selected:
-        from PySide6.QtGui import QPen
-
-        p.setPen(QPen(QColor(0, 0, 0), 2))
+        p.setPen(QPen(ring, 2))
     else:
-        from PySide6.QtGui import QPen
-
         p.setPen(QPen(QColor(120, 120, 120), 1))
     p.drawEllipse(2, 2, SWATCH_SIZE - 4, SWATCH_SIZE - 4)
     p.end()
@@ -215,6 +242,10 @@ class EditorWindow(QMainWindow):
         self.setCentralWidget(self.view)
 
         self._build_toolbar()
+        self._apply_theme()
+        # Re-theme open editors when Windows switches light/dark. The connection
+        # drops automatically when this window is deleted.
+        QGuiApplication.styleHints().colorSchemeChanged.connect(self._apply_theme)
         self._build_shortcuts()
         self._size_to_screenshot(screenshot.size())
 
@@ -224,13 +255,7 @@ class EditorWindow(QMainWindow):
         self.toolbar = tb
         tb.setMovable(False)
         tb.setIconSize(QSize(SWATCH_SIZE, SWATCH_SIZE))
-        tb.setStyleSheet(
-            "QToolBar { background:#f5f5f5; border-bottom:1px solid #ddd; padding:4px; spacing:6px; }"
-            "QPushButton { padding:6px 12px; border:1px solid #ccc; border-radius:4px;"
-            "  background:white; }"
-            "QPushButton:checked { background:#e6f0ff; border-color:#3b82f6; }"
-            "QPushButton:hover { background:#eee; }"
-        )
+        # Stylesheet and swatch icons are set by _apply_theme().
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
 
         # Tool buttons
@@ -271,7 +296,6 @@ class EditorWindow(QMainWindow):
             b = QPushButton()
             b.setToolTip(name)
             b.setFixedSize(SWATCH_SIZE + 8, SWATCH_SIZE + 8)
-            b.setIcon(_swatch_icon(color, color == self.active_color))
             b.setIconSize(QSize(SWATCH_SIZE, SWATCH_SIZE))
             b.setStyleSheet("QPushButton { padding:2px; border:none; background:transparent; }")
             b.clicked.connect(lambda _checked=False, c=color: self._on_swatch(c))
@@ -344,11 +368,20 @@ class EditorWindow(QMainWindow):
             self.view.viewport().setCursor(Qt.CursorShape.CrossCursor)
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
 
+    def _apply_theme(self, *_args) -> None:
+        theme = _current_theme()
+        self._swatch_ring = QColor(theme["swatch_ring"])
+        self.toolbar.setStyleSheet(TOOLBAR_QSS.format(**theme))
+        self._refresh_swatches()
+
+    def _refresh_swatches(self) -> None:
+        # The ring around the active colour uses the theme's text colour.
+        for btn, (_name, c) in zip(self._swatch_buttons, PALETTE):
+            btn.setIcon(_swatch_icon(c, c == self.active_color, self._swatch_ring))
+
     def _on_swatch(self, color: QColor) -> None:
         self.active_color = QColor(color)
-        # Refresh swatch icons (border highlights selected)
-        for btn, (_name, c) in zip(self._swatch_buttons, PALETTE):
-            btn.setIcon(_swatch_icon(c, c == self.active_color))
+        self._refresh_swatches()
         # Recolour selected items
         for item in self.scene.selectedItems():
             if hasattr(item, "set_color"):

@@ -11,6 +11,7 @@ A minimal Windows screenshot tool. Lives in the system tray; press **PrintScreen
 - **Extract Text**: drag over part of the screenshot, or click once for all of it, to copy its text to the clipboard. It uses the OCR engine built into Windows and works offline.
 - Take several screenshots in a row: press PrintScreen again while editors are open. They hide while you select, then come back, and each capture gets its own editor.
 - Color palette: Red (default), Black, White, Yellow, Green, Blue
+- Follows Windows light or dark mode, including switching while an editor is open
 - Save to `%USERPROFILE%\Downloads\screenshot-YYYYMMDD-HHMMSS.png`
 
 ## Run from source

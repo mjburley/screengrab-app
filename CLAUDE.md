@@ -5,8 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```cmd
-:: install deps (use --user if system pip is broken)
+:: install deps (use --user if system pip is broken). Python 3.11+ (dev machine: 3.12)
 python -m pip install -r requirements.txt
+:: PyInstaller is NOT in requirements.txt — build.bat exits early without it
+python -m pip install --user pyinstaller
 
 :: run from source — relative imports require -m, NOT `python screengrab/main.py`
 python -m screengrab.main
@@ -37,12 +39,15 @@ There is no test suite, linter, or formatter configured. To verify a change, run
 
 **Headless checks:** `QT_QPA_PLATFORM=offscreen` lets you construct `EditorWindow`, drive it with `QTest`, and read the clipboard without touching the real desktop. You must also set `QT_QPA_FONTDIR=C:/Windows/Fonts`. Without it, offscreen Qt has no fonts, every glyph renders as a box, and OCR returns strings like `0000…`. Run with `PYTHONPATH=.` when the test script is outside the repo.
 
+**Visual/theme checks:** offscreen ignores the Windows light/dark setting. Instead keep the real platform, construct the window without showing it, and save `widget.grab()` to a PNG. Force a scheme with `QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)` (Qt 6.8+), set before building the window, or after it to test a live switch.
+
 If PySide6 imports fail with `libshiboken does not exist`, shiboken6 didn't install: `python -m pip install --user --force-reinstall --no-deps shiboken6 PySide6`.
 
 ## Deploy and release
 
 - **"Deploy"** means: rebuild, replace `%LOCALAPPDATA%\ScreenGrab\ScreenGrab.exe`, relaunch it, then confirm the tray icon appears and a capture works.
-- **Release:** bump `__version__` in `screengrab/__init__.py`, commit and push, then publish a GitHub Release tagged `vX.Y.Z` on `main` with the .exe attached: `gh release create vX.Y.Z dist\ScreenGrab.exe --title "vX.Y.Z — <summary>"`. `INSTALL.md` sends users to the repo's Releases page (`mjburley/screengrab-app`). Tags only exist on the remote because `gh` creates them.
+- **User-visible changes** also need `README.md` (Features list + Editor shortcuts table) and `INSTALL.md` ("Using the app" + keyboard shortcuts) updated in the same commit.
+- **Release:** bump `__version__` in `screengrab/__init__.py` (its only definition; nothing else reads it), commit and push, then publish a GitHub Release tagged `vX.Y.Z` on `main` with the .exe attached: `gh release create vX.Y.Z dist\ScreenGrab.exe --title "vX.Y.Z — <summary>"`. `INSTALL.md` sends users to the repo's Releases page (`mjburley/screengrab-app`). Tags only exist on the remote because `gh` creates them.
 
 ## Architecture
 
@@ -68,7 +73,7 @@ PrintScreen / tray click ─► HotkeyListener (pynput, daemon thread)
 
 **Multiple editors, one capture at a time.**
 
-- `_editors` holds every open `EditorWindow`. Each removes itself via `destroyed`, and new ones cascade by 30,30 per open editor.
+- `_editors` holds every open `EditorWindow`. Each removes itself via `destroyed`. New ones open centred, then shift 30,30 per already-open editor, wrapping after 8 (`len(_editors) % 8`).
 - `_busy` covers a single capture only: hide editors, grab, overlay.
 - `start_capture` hides visible editors (into `_hidden`) so they aren't in the new screenshot, the way Snipping Tool does. It then waits `HIDE_DELAY_MS` before grabbing.
 - Hidden editors are restored on `region_selected` (before the new editor opens, so the new one lands on top), on `cancelled`, and as a safety net on overlay `destroyed`.
@@ -76,9 +81,10 @@ PrintScreen / tray click ─► HotkeyListener (pynput, daemon thread)
 
 ### Key invariants
 
+- **No persisted state.** The app writes only the `HKCU\...\Run\ScreenGrab` value (autostart) and PNGs the user saves to Downloads. INSTALL.md's Uninstall section promises this, so don't add `QSettings`, config files or logs without updating INSTALL.md.
 - **Per-monitor DPI awareness must be set BEFORE `QApplication` is constructed.** `main.py` calls `ctypes.windll.shcore.SetProcessDpiAwareness(2)` and `setHighDpiScaleFactorRoundingPolicy(PassThrough)` at module top. PyInstaller-built .exes default to system-DPI awareness — without this, 4K/scaled displays render the overlay at the wrong size.
 - **DPR juggling.** `capture.grab_virtual_screen()` returns the physical-pixel pixmap tagged with `setDevicePixelRatio(dpr)`, plus a logical-unit `QRect` from `QScreen.virtualGeometry()`. `SelectorOverlay` is sized in logical units but converts mouse coords to physical pixels before passing them to `QPixmap.copy()` / `drawPixmap` source rects (Qt expects physical pixels there regardless of DPR). The cropped pixmap handed to the editor has DPR stripped to 1.0 so editor/export math stays simple.
-- **Single DPR for the whole desktop.** `grab_virtual_screen()` takes the **primary** screen's `devicePixelRatio` and applies it to the entire mss capture. This assumes every monitor uses the same Windows scaling. On mixed-scaling setups (for example a 150% laptop plus a 100% external monitor), suspect this first if crops are offset or mis-sized.
+- **Single DPR for the whole desktop.** `grab_virtual_screen()` takes the **primary** screen's `devicePixelRatio` and applies it to the entire mss capture. This assumes every monitor uses the same Windows scaling. On mixed-scaling setups (for example a 150% laptop plus a 100% external monitor), suspect this first if crops are offset or mis-sized. Separately, the overlay covers the monitors' bounding rect, so gaps between offset monitors are selectable but invisible. DEVELOPMENT.md treats that as known and cosmetic.
 - **PyInstaller entry point is `run_screengrab.py`, NOT `screengrab/main.py`.** Pointing PyInstaller at a module-inside-a-package breaks relative imports (`from .capture import ...`). The launcher imports the package so relative imports resolve.
 - **`--collect-submodules PySide6` is required.** PyInstaller's static analysis misses Qt submodules; without this the bundle silently fails at runtime.
 - **Autostart only enables when frozen.** `autostart.is_frozen()` gates the Run-key write so source-mode runs don't pin a `python.exe` path. The .exe should live at a stable path (`%LOCALAPPDATA%\ScreenGrab\`) — the registry pins absolute paths, so the dev-tree `dist\` location is the wrong target.
@@ -102,7 +108,13 @@ To add an annotation tool, change all of these:
 3. Add creation branches in `EditorView.mousePressEvent`, `mouseMoveEvent` and `mouseReleaseEvent`. Release drops degenerate items (rectangles under 4 px, arrows under 6 px) and then calls `set_tool(SELECT)`. Text is the exception: it switches back to SELECT on press and goes straight into edit mode.
 4. Add a checkable button in `EditorWindow._build_toolbar` and its checked-state line in `set_tool`.
 
-Text size works like colour. `EditorWindow.active_text_size` applies to new `TextItem`s, and picking a size also resizes the selected text items. The combo uses `activated` rather than `currentIndexChanged`, so re-picking the size already shown still applies it. The last size is kept in a class attribute (`_remembered_text_size`) and lasts until the tray app quits. It is deliberately not written to `QSettings`, because INSTALL.md promises that nothing except the autostart Run key is written.
+Text size works like colour. `EditorWindow.active_text_size` applies to new `TextItem`s, and picking a size also resizes the selected text items. The combo uses `activated` rather than `currentIndexChanged`, so re-picking the size already shown still applies it. The last size is kept in a class attribute (`_remembered_text_size`) and lasts until the tray app quits. It is deliberately not written to `QSettings` (see "No persisted state" above).
+
+**Dark mode.** Qt's `windows11` style (PySide6 6.11 here) follows the Windows light/dark setting, but the editor toolbar is drawn by a stylesheet, which overrides the palette:
+
+- `editor.THEMES` sets every colour for both schemes, text included. A stylesheet that sets a background without `color:` gives white-on-white text in dark mode (the v0.2.0 bug).
+- `_apply_theme` re-runs on `styleHints().colorSchemeChanged`, so open editors switch live. It also redraws the active-swatch ring, which is black in light mode and white in dark mode.
+- The size combo is deliberately left unstyled: a partial `QComboBox` rule leaves a stray native border around its arrow.
 
 ### Extract Text (OCR)
 
