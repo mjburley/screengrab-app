@@ -43,6 +43,10 @@ def extract_text(image: QImage) -> str:
             "Add one under Settings → Time & language → Language & region."
         )
 
+    # Work in raw pixels. A DPR-tagged capture (scaled display) would otherwise
+    # be painted at its smaller logical size by _pad, losing detail.
+    image = QImage(image)
+    image.setDevicePixelRatio(1.0)
     image = _pad(image, PADDING)
 
     # Upscale for accuracy, but never past the engine's size limit (a wide

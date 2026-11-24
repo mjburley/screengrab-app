@@ -4,24 +4,28 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication, QGraphicsScene
 
 
-def render_scene(scene: QGraphicsScene, source: QRectF) -> QImage:
-    """Render the scene at native resolution, ignoring selection chrome."""
+def render_scene(scene: QGraphicsScene, source: QRectF, size: QSize) -> QImage:
+    """Render ``source`` (scene units) into a ``size``-pixel image, without
+    selection chrome. Pass the capture's physical size for native resolution."""
     # Hide selection rectangles / handles in the rendered output.
     selected = list(scene.selectedItems())
     for item in selected:
         item.setSelected(False)
 
-    image = QImage(int(source.width()), int(source.height()), QImage.Format.Format_ARGB32)
+    image = QImage(size, QImage.Format.Format_ARGB32)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-    scene.render(painter, target=QRectF(image.rect()), source=source)
+    # Ignore aspect: source and size describe the same capture, and keeping
+    # aspect could shift the result a pixel through float rounding.
+    scene.render(painter, target=QRectF(image.rect()), source=source,
+                 aspectRatioMode=Qt.AspectRatioMode.IgnoreAspectRatio)
     painter.end()
 
     for item in selected:

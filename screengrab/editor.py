@@ -71,7 +71,11 @@ def _current_theme() -> dict[str, str]:
 
 
 class EditorScene(QGraphicsScene):
-    """Scene that owns the screenshot pixmap and forwards drawing-tool clicks."""
+    """Scene that owns the screenshot pixmap and forwards drawing-tool clicks.
+
+    Scene units are logical pixels. The pixmap is physical pixels tagged with
+    the display's DPR, so it shows at its on-screen size, not zoomed by the
+    scaling factor."""
 
     request_create = Signal(QPointF, QPointF)  # raw start/current pos forwarded to view
 
@@ -81,7 +85,7 @@ class EditorScene(QGraphicsScene):
         self.bg_item.setZValue(-1000)
         self.bg_item.setFlag(self.bg_item.GraphicsItemFlag.ItemIsSelectable, False)
         self.addItem(self.bg_item)
-        self.setSceneRect(QRectF(pixmap.rect()))
+        self.setSceneRect(QRectF(QPointF(0, 0), pixmap.deviceIndependentSize()))
 
 
 class EditorView(QGraphicsView):
@@ -247,7 +251,7 @@ class EditorWindow(QMainWindow):
         # drops automatically when this window is deleted.
         QGuiApplication.styleHints().colorSchemeChanged.connect(self._apply_theme)
         self._build_shortcuts()
-        self._size_to_screenshot(screenshot.size())
+        self._size_to_screenshot(screenshot.deviceIndependentSize().toSize())
 
     # ---- layout ----
     def _build_toolbar(self) -> None:
@@ -402,29 +406,36 @@ class EditorWindow(QMainWindow):
                 continue
             self.scene.removeItem(item)
 
-    def _scene_source_rect(self) -> QRectF:
-        return QRectF(self.scene.bg_item.pixmap().rect())
+    def _render(self):
+        # Render the logical scene at the capture's physical size, so output
+        # keeps full resolution on scaled displays.
+        return export.render_scene(
+            self.scene, self.scene.sceneRect(), self.scene.bg_item.pixmap().size()
+        )
 
     def _on_copy(self) -> None:
-        image = export.render_scene(self.scene, self._scene_source_rect())
+        image = self._render()
         export.copy_to_clipboard(image)
         self.statusBar().showMessage("Copied to clipboard", 1500)
 
     def _on_save(self) -> None:
-        image = export.render_scene(self.scene, self._scene_source_rect())
+        image = self._render()
         path = export.save_to_downloads(image)
         self.statusBar().showMessage(f"Saved {path.name} to Downloads", 2500)
 
     def extract_text(self, region: QRectF | None = None) -> None:
-        """OCR ``region`` of the screenshot (scene coords = screenshot pixels),
-        or all of it when ``region`` is None, and copy the text."""
+        """OCR ``region`` of the screenshot (scene coords, logical pixels), or
+        all of it when ``region`` is None, and copy the text."""
         # OCR the original capture, not the annotated render — drawn boxes and
         # text annotations would only add noise.
         pixmap = self.scene.bg_item.pixmap()
         where = "the screenshot"
         if region is not None:
             where = "the selection"
-            crop = region.toAlignedRect().intersected(pixmap.rect())
+            # Logical scene units -> physical pixels, which QPixmap.copy() takes.
+            d = pixmap.devicePixelRatio()
+            physical = QRectF(region.x() * d, region.y() * d, region.width() * d, region.height() * d)
+            crop = physical.toAlignedRect().intersected(pixmap.rect())
             if crop.isEmpty():
                 # Dragged entirely outside the image. Must not reach copy():
                 # QPixmap.copy() with an empty rect copies the *whole* pixmap.

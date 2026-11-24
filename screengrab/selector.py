@@ -145,9 +145,10 @@ class SelectorOverlay(QWidget):
         sel = sel.intersected(self.rect())
         # Crop in physical pixels so the editor receives the full-resolution image.
         cropped = self._pixmap.copy(self._logical_to_physical(sel))
-        # Strip DPR — the editor treats the cropped pixmap as its own coordinate
-        # space (1 pixel = 1 unit), which keeps annotation maths simple.
-        cropped.setDevicePixelRatio(1.0)
+        # Keep the DPR tag: the editor works in logical units, so the capture
+        # shows at its on-screen size (not zoomed by display scaling) while
+        # export and OCR still use every physical pixel.
+        cropped.setDevicePixelRatio(self._dpr)
         self.region_selected.emit(sel, cropped)
         self.close()
 
